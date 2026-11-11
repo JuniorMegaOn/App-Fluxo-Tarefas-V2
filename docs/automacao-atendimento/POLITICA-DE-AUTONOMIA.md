@@ -19,7 +19,7 @@ Mudanças em `client/src/ordem.js` ou `client/src/estilos.css` só se o pedido f
 ## O que o agente não pode mudar
 
 - Login, sessão e credenciais: `server/src/auth.js`, qualquer `.env`, qualquer segredo.
-- Banco: `server/src/db.js`, migrações, `server/dados/`.
+- Banco: só o agente Banco de Dados pode mudar `server/src/db.js`, e apenas acrescentando uma migração no fim da lista, sem apagar dados, tabelas ou colunas. Nenhum agente altera migrações existentes nem `server/dados/`.
 - Atendimento: `server/src/atendimento.js`, `client/src/Atendimento.jsx`, `client/src/atendimento.css`.
 - API de quadros: `server/src/quadros.js` e `server/src/app.js`. Mudança de contrato da API precisa de pedido humano.
 - Infraestrutura: `package.json`, `package-lock.json`, `vite.config.js`, `scripts/`, `server/src/index.js`, `.github/`, `docs/automacao-atendimento/POLITICA-DE-AUTONOMIA.md`.

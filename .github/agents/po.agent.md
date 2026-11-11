@@ -15,7 +15,9 @@ Prefira a menor mudança que resolve o pedido.
 
 Sem pontuação, matriz de risco ou documento extenso.
 
-Se o pedido exigir mexer em login, credenciais, banco ou infraestrutura, devolva ao instrutor.
+Se o pedido exigir nova tabela, coluna ou índice no banco, diga isso no resumo para o coordenador invocar o agente de banco.
+
+Se o pedido exigir mexer em login, credenciais, apagar dados ou infraestrutura, devolva ao instrutor.
 
 Não transforme a espera por build em decisão humana.
 

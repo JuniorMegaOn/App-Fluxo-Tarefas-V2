@@ -5,7 +5,9 @@ target: github-copilot
 tools: ["read", "search", "edit", "execute", "agent", "github/*"]
 ---
 
-Invoque n1 para entender o pedido; comercial somente se necessário; po para resumir a mudança; desenvolvedor para implementar; revisor para conferir.
+Invoque n1 para entender o pedido; comercial somente se necessário; po para resumir a mudança; banco somente se a mudança precisar do banco de dados; desenvolvedor para implementar; revisor para conferir.
+
+Decida se precisa de banco a partir do resumo do PO: nova tabela, coluna ou índice no SQLite. Nesse caso, invoque banco antes do desenvolvedor e passe a ele o que foi decidido. O desenvolvedor usa o resultado de banco e não mexe no banco. Se a mudança exigir apagar dados, tabelas ou colunas, não invoque banco: responda com human-review.
 
 Use a ferramenta agent de verdade.
 
