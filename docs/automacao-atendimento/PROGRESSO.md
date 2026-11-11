@@ -87,3 +87,12 @@
 - **N1 de verdade.** `native-agents.yml` ganhou um passo do N1 antes do agente principal: o agente lê o ticket e escreve a primeira resposta; `coordenador.mjs mensagem` a publica na hora. Se o agente não escrever nada, nada é publicado.
 - **Andamento enquanto a tela está aberta.** O app é local e o GitHub não consegue avisá-lo, então a conversa busca o andamento da issue a cada 5 s (só com a aba visível e enquanto a fase ainda pode mudar) e tem o botão "Atualizar". A conversa só é redesenhada quando algo muda.
 - O N1 só aparece em execução real (`AGENT_DRY_RUN=false`, com autenticação do agente). Esse passo ainda não rodou no GitHub.
+
+## Base de conhecimento (docs/knowledge)
+
+- **O que é.** Cada PR e cada issue fechados deixam uma entrada em `docs/knowledge/` (`pr-<n>.md` e `issue-<n>.md`, com frontmatter e texto). O `INDEX.md` lista tudo e é por onde os agentes começam. As regras e o esquema estão em `docs/knowledge/README.md`.
+- **Agentes preparados.** Os prompts do coordenador (agente principal, N1, Revisor e correção) e os perfis em `.github/agents/` mandam consultar `docs/knowledge/INDEX.md` antes de agir. Há um perfil novo, `conhecimento`. Agentes de produto não editam a pasta (política atualizada).
+- **Quem gera.** `native-knowledge.yml` roda quando um PR ou issue fecha (`pull_request_target`, que nunca baixa o código do PR) e por disparo manual. O fluxo de entrega e o fluxo do agente também o disparam para o que eles próprios fecham, porque o Actions não dispara workflows por eventos feitos com o `GITHUB_TOKEN`. O coordenador (`conhecimento-preparar` e `conhecimento-publicar`) gera a entrada-base só com fatos; em execução real um agente melhora resumo, "O que foi feito" e "Como aplicar". O coordenador valida o esquema, devolve entrada inválida à versão-base, desfaz mudanças em outros arquivos da pasta, refaz o índice e publica direto na `main`.
+- **Segurança.** O texto vira contexto de agentes, então só entram PRs e issues de dono, membro ou colaborador (ou PR do próprio coordenador). O texto externo fica em blocos de dado e a base é tratada como referência, nunca instrução.
+- **Histórico.** Rodei `tipo=todos` contra o V2: não há PR nem issue fechada, então não havia nada a gerar (o `INDEX.md` nasce vazio). Para preencher no futuro: Actions > native-knowledge > Run workflow, `tipo = todos`.
+- **Ensaio:** `node automacao/ensaio-entrega.mjs` agora cobre também a base de conhecimento. O workflow novo ainda não rodou no GitHub.

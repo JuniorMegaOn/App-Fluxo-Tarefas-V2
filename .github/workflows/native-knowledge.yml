@@ -1,0 +1,86 @@
+name: native-knowledge
+
+# Base de conhecimento: cada PR e cada issue fechados viram uma entrada em docs/knowledge/, que os agentes consultam antes
+# de trabalhar. Roda quando algo fecha e também por disparo manual (tipo=todos preenche o histórico). O fluxo de entrega
+# dispara este workflow para o que ele mesmo fecha, porque fechamentos feitos pelo Actions não disparam workflows.
+# pull_request_target roda o arquivo da main e nunca baixa o código do PR: só lê dados pela API.
+on:
+  pull_request_target:
+    types: [closed]
+  issues:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      tipo:
+        description: O que gerar
+        type: choice
+        options: [todos, pr, issue]
+        default: todos
+      numero:
+        description: Número do PR ou da issue (deixe vazio com "todos")
+        required: false
+      regerar:
+        description: Refazer entradas que já existem
+        type: boolean
+        default: false
+
+# Uma por vez: todas publicam na main.
+concurrency:
+  group: native-knowledge
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  conhecimento:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: read
+      id-token: write # exigido pela ação do Claude
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Gerar as entradas-base
+        id: kb
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TIPO: ${{ github.event_name == 'pull_request_target' && 'pr' || github.event_name == 'issues' && 'issue' || inputs.tipo }}
+          NUMERO: ${{ github.event.pull_request.number || github.event.issue.number || inputs.numero }}
+          REGERAR: ${{ inputs.regerar }}
+        run: node automacao/coordenador.mjs conhecimento-preparar
+
+      # Com AGENT_DRY_RUN=false um agente melhora resumo, "O que foi feito" e "Como aplicar". Sem ele, fica a entrada só com fatos.
+      - name: Agente de conhecimento (Claude Code)
+        if: steps.kb.outputs.total != '0' && (vars.AGENT_DRY_RUN || 'true') == 'false' && (vars.AGENT_PROVIDER || 'claude') == 'claude'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: Leia o arquivo ${{ steps.kb.outputs.prompt_file }} e execute as instruções dele.
+          claude_args: |
+            --max-turns 20
+            --allowedTools Read,Edit,Glob,Grep
+
+      - name: Agente de conhecimento (OpenAI Codex)
+        if: steps.kb.outputs.total != '0' && (vars.AGENT_DRY_RUN || 'true') == 'false' && (vars.AGENT_PROVIDER || 'claude') == 'codex'
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":workspace"
+          prompt-file: ${{ steps.kb.outputs.prompt_file }}
+
+      # O coordenador confere o esquema de cada entrada (inválida volta para a versão-base), refaz o INDEX.md e publica na main.
+      - name: Validar e publicar
+        if: steps.kb.outputs.total != '0'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ENTRADAS: ${{ steps.kb.outputs.entradas }}
+        run: node automacao/coordenador.mjs conhecimento-publicar

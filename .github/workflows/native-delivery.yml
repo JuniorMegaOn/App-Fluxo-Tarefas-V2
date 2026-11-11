@@ -26,6 +26,7 @@ jobs:
       pull-requests: read
     outputs:
       has_pr: ${{ steps.ctx.outputs.has_pr }}
+      pr_number: ${{ steps.ctx.outputs.pr_number }}
       head_sha: ${{ steps.ctx.outputs.head_sha }}
       merged: ${{ steps.ctx.outputs.merged }}
       pr_state: ${{ steps.ctx.outputs.pr_state }}
@@ -69,6 +70,7 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
+      actions: write # para disparar o workflow de conhecimento
       id-token: write # exigido pela ação do Claude
     outputs:
       fix: ${{ steps.ent.outputs.fix }}
@@ -116,6 +118,17 @@ jobs:
           AUTO_MERGE: ${{ vars.AUTO_MERGE || 'false' }}
           AGENT_DRY_RUN: ${{ vars.AGENT_DRY_RUN || 'true' }}
         run: node automacao/coordenador.mjs entregar
+
+      # O PR foi integrado e a issue fechada por este fluxo (o Actions não dispara workflows por isso): gera o conhecimento dos dois.
+      - name: Gerar o conhecimento do que foi entregue
+        if: steps.ent.outputs.result == 'respondido'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          PR_NUMBER: ${{ needs.contexto.outputs.pr_number }}
+        run: |
+          gh workflow run native-knowledge.yml --ref main -f tipo=pr -f numero="$PR_NUMBER"
+          gh workflow run native-knowledge.yml --ref main -f tipo=issue -f numero="$ISSUE_NUMBER"
 
   # Uma única rodada automática de correção, no MESMO PR. Se falhar de novo, o instrutor decide.
   corrigir:

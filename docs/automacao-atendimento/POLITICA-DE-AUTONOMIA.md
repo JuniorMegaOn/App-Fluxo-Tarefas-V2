@@ -23,6 +23,7 @@ Mudanças em `client/src/ordem.js` ou `client/src/estilos.css` só se o pedido f
 - Atendimento: `server/src/atendimento.js`, `client/src/Atendimento.jsx`, `client/src/atendimento.css`.
 - API de quadros: `server/src/quadros.js` e `server/src/app.js`. Mudança de contrato da API precisa de pedido humano.
 - Infraestrutura: `package.json`, `package-lock.json`, `vite.config.js`, `scripts/`, `server/src/index.js`, `.github/`, `docs/automacao-atendimento/POLITICA-DE-AUTONOMIA.md`.
+- Base de conhecimento (`docs/knowledge/`): só o passo de conhecimento escreve ali. Agentes de produto a consultam, mas não a editam.
 - Permissões, workflows e configurações de repositório.
 
 ## Como receber um pedido de produto

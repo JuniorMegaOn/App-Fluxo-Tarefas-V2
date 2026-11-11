@@ -134,3 +134,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ steps.coord.outputs.issue_number }}
         run: gh workflow run native-delivery.yml --ref main -f issue_number="$ISSUE_NUMBER"
+
+      # Dúvida respondida sem código: a issue foi fechada por este fluxo, então ele mesmo gera o conhecimento dela.
+      - name: Gerar o conhecimento da issue respondida
+        if: steps.publicar.outputs.outcome == 'answered'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.coord.outputs.issue_number }}
+        run: gh workflow run native-knowledge.yml --ref main -f tipo=issue -f numero="$ISSUE_NUMBER"
