@@ -57,6 +57,36 @@ jobs:
           AGENT_DRY_RUN: ${{ vars.AGENT_DRY_RUN || 'true' }}
         run: node automacao/coordenador.mjs preparar
 
+      # N1: um agente de verdade lê o ticket e escreve a primeira resposta, publicada na issue logo em seguida.
+      # Se o N1 falhar, o trabalho segue e o cliente simplesmente não recebe essa mensagem (nada é fabricado).
+      - name: N1 entende o pedido (Claude Code)
+        if: steps.coord.outputs.run_agent == 'true' && steps.coord.outputs.provider == 'claude'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: Leia o arquivo ${{ steps.coord.outputs.n1_prompt_file }} e execute as instruções dele.
+          claude_args: |
+            --max-turns 6
+            --allowedTools Read,Write,Glob,Grep
+
+      - name: N1 entende o pedido (OpenAI Codex)
+        if: steps.coord.outputs.run_agent == 'true' && steps.coord.outputs.provider == 'codex'
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":workspace"
+          prompt-file: ${{ steps.coord.outputs.n1_prompt_file }}
+
+      - name: Publicar a resposta do N1
+        if: steps.coord.outputs.run_agent == 'true'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.coord.outputs.issue_number }}
+        run: node automacao/coordenador.mjs mensagem
+
       # Só um dos dois roda, e só com AGENT_DRY_RUN=false. O texto do cliente fica no arquivo do pedido, não no prompt.
       - name: Claude Code
         if: steps.coord.outputs.run_agent == 'true' && steps.coord.outputs.provider == 'claude'

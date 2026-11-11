@@ -11,8 +11,12 @@ import "./atendimento.css";
 
 const hora = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const dia = (iso) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+// Fases em que o andamento ainda pode mudar: nelas a conversa se sincroniza com a issue enquanto a tela está aberta.
+const FASES_FINAIS = ["respondido", "sem-github", "erro-issue"];
+const INTERVALO_SYNC = 5000;
+const assinatura = (d) => (d ? `${d.execution?.phase}|${d.execution?.prNumber}|${d.messages.map((m) => m.id).join(",")}` : "");
 const FASE = {
-  preparado: "Encaminhado para análise técnica",
+  preparado: "Registrado, ainda sem agente em execução",
   executando: "Em análise técnica",
   "pr-aberto": "Alteração em revisão",
   "aguardando-cliente": "Aguardando a sua resposta",
@@ -44,11 +48,14 @@ export function Atendimento() {
   const [tituloNovo, setTituloNovo] = useState("");
   const [descricaoNovo, setDescricaoNovo] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
   const [erro, setErro] = useState(null);
   const fimRef = useRef(null);
   const entradaRef = useRef(null);
   const tituloRef = useRef(null);
   const ativoRef = useRef(null);
+  const conversaRef = useRef(null);
+  conversaRef.current = conversa;
 
   const atualizarLista = async () => {
     const dados = await api.atendimento.listar();
@@ -65,6 +72,24 @@ export function Atendimento() {
       if (ativoRef.current === id) setConversa(dados);
     } catch (e) {
       if (ativoRef.current === id) setErro(e.message);
+    }
+  };
+
+  // O app é local e o GitHub não consegue avisá-lo: ele busca o andamento da issue. Só troca o estado se algo mudou,
+  // para a conversa não "pular" enquanto você lê.
+  const sincronizar = async ({ manual = false } = {}) => {
+    const id = ativoRef.current;
+    if (!id) return;
+    if (manual) { setSincronizando(true); setErro(null); }
+    try {
+      const dados = await api.atendimento.detalhe(id);
+      if (ativoRef.current !== id || assinatura(conversaRef.current) === assinatura(dados)) return;
+      setConversa(dados);
+      atualizarLista().catch(() => {});
+    } catch (e) {
+      if (manual && ativoRef.current === id) setErro(e.message);
+    } finally {
+      if (manual) setSincronizando(false);
     }
   };
 
@@ -111,6 +136,16 @@ export function Atendimento() {
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [texto]);
+
+  // Sincronização automática: a cada poucos segundos, só com a aba visível e só enquanto o andamento pode mudar.
+  const faseAtual = conversa?.execution?.phase;
+  const acompanhando = Boolean(ativoId) && !novo && Boolean(faseAtual) && !FASES_FINAIS.includes(faseAtual);
+  useEffect(() => {
+    if (!acompanhando) return undefined;
+    const timer = setInterval(() => { if (!document.hidden) sincronizar(); }, INTERVALO_SYNC);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acompanhando, ativoId]);
 
   useEffect(() => {
     if (novo) tituloRef.current?.focus();
@@ -276,9 +311,14 @@ export function Atendimento() {
           <>
             <header className="atend-topo">
               <h2 className="atend-topo-titulo">{conversa.ticket.title}</h2>
-              <Botao variante="suave" onClick={alternarStatus}>
-                {conversa.ticket.status === "aberto" ? "Marcar como resolvido" : "Reabrir"}
-              </Botao>
+              <div className="atend-topo-acoes">
+                <Botao variante="suave" icone="atualizar" onClick={() => sincronizar({ manual: true })} disabled={sincronizando} aria-label="Buscar novidades na issue">
+                  {sincronizando ? "Atualizando…" : "Atualizar"}
+                </Botao>
+                <Botao variante="suave" onClick={alternarStatus}>
+                  {conversa.ticket.status === "aberto" ? "Marcar como resolvido" : "Reabrir"}
+                </Botao>
+              </div>
             </header>
             <div className="atend-mensagens" role="log" aria-live="polite">
               {FASE[conversa.execution?.phase] ? <p className="atend-sistema">{FASE[conversa.execution.phase]}</p> : null}

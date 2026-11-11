@@ -80,3 +80,10 @@
 - A `main` do V2 não tem proteção nem rulesets; "respeitar as regras" hoje é só o merge normal.
 - Os passos reais dos agentes (Claude Code e Codex), o build no Actions e o disparo entre workflows nunca rodaram no GitHub. O YAML foi validado e a lógica foi ensaiada com o GitHub simulado.
 - O texto da etapa pedia o Copilot para a correção; usei o mesmo agente (Claude ou Codex) da etapa 03, como combinado lá.
+
+## Ajuste do N1: respostas reais e andamento ao vivo
+
+- **Sem mensagem fabricada.** O app não grava mais textos fixos como "encaminhado para análise técnica" como se fossem de um agente. Uma mensagem de autor `agente` só existe se um agente escreveu o texto e o coordenador o publicou na issue (comentário `native-agents:reply`). Cada mudança de fase vira apenas uma linha de processo (autor `sistema`), com o horário do comentário na issue. Em DRY_RUN a linha diz que nenhum agente foi acionado.
+- **N1 de verdade.** `native-agents.yml` ganhou um passo do N1 antes do agente principal: o agente lê o ticket e escreve a primeira resposta; `coordenador.mjs mensagem` a publica na hora. Se o agente não escrever nada, nada é publicado.
+- **Andamento enquanto a tela está aberta.** O app é local e o GitHub não consegue avisá-lo, então a conversa busca o andamento da issue a cada 5 s (só com a aba visível e enquanto a fase ainda pode mudar) e tem o botão "Atualizar". A conversa só é redesenhada quando algo muda.
+- O N1 só aparece em execução real (`AGENT_DRY_RUN=false`, com autenticação do agente). Esse passo ainda não rodou no GitHub.

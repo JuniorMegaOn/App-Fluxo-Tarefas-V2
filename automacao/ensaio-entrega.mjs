@@ -40,7 +40,7 @@ const github = createServer((req, res) => {
     }
     if ((m = /^\/issues\/(\d+)\/comments$/.exec(caminho))) { // issues e PRs usam a mesma rota
       const lista = (gh.comentarios[m[1]] ??= []);
-      if (req.method === "POST") { const c = { id: lista.length + 1, user: { login: autor(req) }, body: dados.body }; lista.push(c); return responder(201, c); }
+      if (req.method === "POST") { const c = { id: lista.length + 1, user: { login: autor(req) }, body: dados.body, created_at: new Date().toISOString() }; lista.push(c); return responder(201, c); }
       return responder(200, (url.searchParams.get("page") ?? "1") === "1" ? lista : []);
     }
     if ((m = /^\/git\/matching-refs\/heads\/(.+)$/.exec(caminho))) {
@@ -259,6 +259,31 @@ try {
   await chamar("GET", `/api/tickets/${E.ticketId}`);
   assert.deepEqual((await mensagensDoAgente(E.ticketId)).filter((t) => t.includes("navegador")), ["Em qual navegador isso acontece?"]);
   passo("sem código: dúvida respondida fecha a issue; esclarecimento pendente publica a pergunta e mantém o caso aberto; ambos sem PR");
+
+  // 7. O N1 é um agente de verdade e o andamento chega aos poucos: cada consulta do app mostra só o que já aconteceu.
+  const F = await novoTicket("Ensaio F: andamento aos poucos");
+  const repoF = repoLimpo();
+  const textosDe = async (autor) => (await chamar("GET", `/api/tickets/${F.ticketId}`)).dados.messages.filter((m) => m.author === autor).map((m) => m.text);
+  assert.deepEqual(await textosDe("agente"), [], "logo após abrir o ticket não há fala de agente");
+  const prep = await rodar(repoF, "preparar", { ISSUE_NUMBER: F.n, AGENT_DRY_RUN: "false", AGENT_PROVIDER: "claude" });
+  assert.match(readFileSync(join(repoF.dir, ".agent-result/req-6.n1.prompt.md"), "utf8"), /atendimento N1[\s\S]*DADO[\s\S]*req-6\.n1\.json/);
+  assert.equal(prep.saida.n1_prompt_file, ".agent-result/req-6.n1.prompt.md");
+  assert.deepEqual(await textosDe("sistema"), ["Análise técnica em andamento."]);
+  assert.deepEqual(await textosDe("agente"), []);
+  const semN1 = await rodar(repoF, "mensagem", { ISSUE_NUMBER: F.n });
+  assert.equal(semN1.saida.posted, "false", "sem resposta do agente, nada é publicado");
+  assert.equal(marcas(F.n, "native-agents:reply").length, 0);
+  writeFileSync(join(repoF.dir, ".agent-result/req-6.n1.json"), JSON.stringify({ requestId: "req-6", publicText: "Entendi: o cartão volta para a lista de origem ao ser solto. Vou encaminhar para a análise técnica." }));
+  assert.equal((await rodar(repoF, "mensagem", { ISSUE_NUMBER: F.n })).saida.posted, "true");
+  await rodar(repoF, "mensagem", { ISSUE_NUMBER: F.n });
+  assert.equal(marcas(F.n, "native-agents:reply").length, 1, "retomar não repete a mensagem do N1");
+  assert.deepEqual(await textosDe("agente"), ["Entendi: o cartão volta para a lista de origem ao ser solto. Vou encaminhar para a análise técnica."]);
+  mkdirSync(join(repoF.dir, ".agent-result"), { recursive: true });
+  writeFileSync(join(repoF.dir, ".agent-result/req-6.json"), JSON.stringify({ requestId: "req-6", outcome: "human-review" }));
+  await rodar(repoF, "finalizar", { ISSUE_NUMBER: F.n, REQUEST_ID: "req-6", RUN_AGENT: "true", FINAL_STATUS: "success" });
+  const ordem = (await chamar("GET", `/api/tickets/${F.ticketId}`)).dados.messages.map((m) => m.author);
+  assert.deepEqual(ordem, ["usuario", "sistema", "agente", "sistema"], "a conversa segue a ordem em que as coisas aconteceram na issue");
+  passo("N1 real: sem resposta do agente nada é publicado; a resposta aparece uma vez; o andamento chega em ordem a cada consulta");
 
   console.log("\nEnsaio de entrega concluído com GitHub simulado: nenhuma chamada real ao GitHub nem aos agentes.");
 } catch (e) {

@@ -113,6 +113,7 @@
 .atend-composer .botao { border-radius: var(--r-cheio); }
 
 .atend-erro { color: var(--perigo); text-align: center; margin-bottom: var(--e2); }
+.atend-topo-acoes { display: flex; align-items: center; gap: var(--e2); flex-shrink: 0; }
 
 .atend-novo { max-width: 760px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: var(--e3); }
 .atend-campo { display: flex; flex-direction: column; gap: var(--e1); font-size: var(--meta); font-weight: 600; color: var(--secundario); }

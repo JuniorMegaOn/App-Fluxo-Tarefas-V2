@@ -53,7 +53,7 @@ const coordenar = (comando, extra, comments = []) => {
 };
 const lerPasta = (nome) => readFileSync(join(pasta, ".agent-result", nome), "utf8");
 const doBot = (corpo) => ({ user: { login: "github-actions[bot]" }, body: corpo });
-const mensagensN1 = async (id) => (await chamar("GET", `/api/tickets/${id}`)).dados.messages.filter((m) => m.author === "agente");
+const mensagensDe = async (id, autor) => (await chamar("GET", `/api/tickets/${id}`)).dados.messages.filter((m) => m.author === autor);
 
 try {
   // 1-3. Ticket fictício, dono identificado pela sessão e ligação ticket <-> SQLite <-> issue.
@@ -95,8 +95,8 @@ try {
   // 6-7. Argumentos do workflow e DRY_RUN: nenhum passo de agente roda sem run_agent == 'true'.
   const workflow = readFileSync(".github/workflows/native-agents.yml", "utf8");
   const agentes = workflow.split("\n").filter((l) => l.includes("uses: anthropics/claude-code-action@v1") || l.includes("uses: openai/codex-action@v1"));
-  assert.equal(agentes.length, 2);
-  assert.equal((workflow.match(/if: steps\.coord\.outputs\.run_agent == 'true' && /g) ?? []).length, 2);
+  assert.equal(agentes.length, 4); // N1 e agente principal, para Claude e para Codex
+  assert.equal((workflow.match(/if: steps\.coord\.outputs\.run_agent == 'true' && /g) ?? []).length, 4);
   const real = coordenar("preparar", { AGENT_DRY_RUN: "false", AGENT_PROVIDER: "claude" });
   assert.equal(real.saida.run_agent, "true");
   assert.match(lerPasta("req-42.comment.md"), /execução real/);
@@ -118,10 +118,11 @@ try {
   const paralelas = await Promise.all([chamar("GET", `/api/tickets/${ticketId}`), chamar("GET", `/api/tickets/${ticketId}`)]);
   assert.equal(paralelas[0].dados.execution.phase, "preparado");
   assert.equal(paralelas[0].dados.execution.agent, "claude");
-  let n1 = await mensagensN1(ticketId);
-  assert.equal(n1.length, 1);
-  assert.match(n1[0].text, /encaminhado para análise técnica/);
-  passo("N1 enviou 1 mensagem curta (mesmo com 2 consultas ao mesmo tempo) e a fase virou preparado");
+  let linhas = await mensagensDe(ticketId, "sistema");
+  assert.equal(linhas.length, 1);
+  assert.match(linhas[0].text, /Modo de ensaio: nenhum agente foi acionado/);
+  assert.equal((await mensagensDe(ticketId, "agente")).length, 0, "o app não fabrica fala de agente");
+  passo("fase preparado vira 1 linha de processo (mesmo com 2 consultas ao mesmo tempo) e nenhuma mensagem de agente é inventada");
 
   mkdirSync(join(pasta, ".agent-result"), { recursive: true });
   writeFileSync(join(pasta, ".agent-result/req-42.json"), JSON.stringify({ requestId: "req-42", outcome: "answered", summary: "Explicado como mover cartões." }));
@@ -134,11 +135,12 @@ try {
   await chamar("GET", `/api/tickets/${ticketId}`);
   const fechado = await chamar("GET", `/api/tickets/${ticketId}`);
   assert.equal(fechado.dados.execution.phase, "concluido");
-  n1 = await mensagensN1(ticketId);
-  assert.equal(n1.length, 2);
+  linhas = await mensagensDe(ticketId, "sistema");
+  assert.deepEqual(linhas.map((m) => m.text), ["Atendimento registrado. Modo de ensaio: nenhum agente foi acionado.", "Análise técnica concluída."]);
+  assert.equal((await mensagensDe(ticketId, "agente")).length, 0);
   const enviadas = JSON.parse(db.prepare("SELECT mensagens_enviadas FROM execucao WHERE ticket_id = ?").get(ticketId).mensagens_enviadas);
-  assert.deepEqual(Object.keys(enviadas).sort(), ["concluido", "encaminhado"]);
-  passo("resultado registrado na issue pelo coordenador, fase concluido no app e 2 mensagens N1 no total, sem repetir");
+  assert.deepEqual(Object.keys(enviadas).sort(), ["fase:concluido", "fase:preparado"]);
+  passo("resultado registrado na issue pelo coordenador, fase concluido no app, 2 linhas de processo em ordem e nenhuma fala de agente, sem repetir");
 
   assert.ok(existsSync(join(pasta, ".agent-result/req-42.prompt.md")));
   console.log("\nEnsaio concluído sem chamadas reais ao GitHub nem aos agentes.");
