@@ -18,7 +18,7 @@ const saidaMensagem = (m) => ({ id: m.id, ticketId: m.ticket_id, author: m.autor
 // --- Ligação com o GitHub e os agentes (Claude Code ou Codex) ---
 // O app cria a issue; o workflow native-agents.yml prepara o pedido e registra o andamento num comentário
 // da própria issue (o Actions não alcança o SQLite local). Aqui só lemos esse comentário, e só do bot do Actions.
-const FASES_FINAIS = ["concluido", "falhou", "sem-github", "erro-issue"];
+const FASES_FINAIS = ["concluido", "sem-github", "erro-issue"]; // "falhou" não é final: a retomada manual parte dela
 const FASES_DO_AGENTE = ["preparado", "executando", "concluido", "falhou"];
 const N1 = {
   encaminhado: "Seu atendimento foi registrado e encaminhado para análise técnica. Estamos acompanhando o andamento da solicitação.",

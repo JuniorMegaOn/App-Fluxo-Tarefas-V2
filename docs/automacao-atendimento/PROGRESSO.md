@@ -55,3 +55,14 @@
 - Nenhuma chamada real a Claude, Codex ou à API do GitHub foi feita. O workflow nunca rodou no GitHub.
 - Os tickets ainda não são filtrados por dono: o dono é só gravado.
 - As ações usam as tags `@v1`, sem fixar por SHA.
+
+**Ensaio real no GitHub (DRY_RUN, sem agente e sem API key)**
+- Variáveis do V2 definidas: `AGENT_RUNTIME=claude-codex`, `AGENT_PROVIDER=claude`, `AGENT_DRY_RUN=true`. Label `origin:app` criada. Nenhum secret criado.
+- Ticket fictício aberto pelo app (instância local com banco separado) gerou a issue #1 com a label `origin:app`.
+- O workflow disparou duas vezes (`opened` e `labeled`): uma preparou o pedido `req-1` e comentou na issue; a outra foi descartada como `ja-existe`. Ambas terminaram com sucesso.
+- Ao abrir o ticket de novo no app, a fase virou `preparado` e o N1 enviou uma única mensagem, mesmo em consultas repetidas.
+
+**Revisão independente (subagente) e correções**
+- Corrigido: `falhou` deixou de ser fase final no app (a retomada parte dela); retomada aceita também `executando`; PR é casado por branch `agente/issue-N` exata ou `#N` sem casar `#N0`; prompt não pede mais branch/PR que as ferramentas liberadas não permitem; chamadas ao GitHub têm timeout.
+- Não corrigido: comentários da issue lidos só até 100 (sem paginação); ticket em `criando-issue` ou `erro-issue` não é reenviado depois.
+- Antes de `AGENT_DRY_RUN=false`: instalar o app do GitHub do Claude no repositório e confirmar o input `permission-profile` do Codex.

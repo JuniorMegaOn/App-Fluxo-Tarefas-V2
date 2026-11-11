@@ -29,6 +29,7 @@ async function github(metodo, caminho, corpo) {
     method: metodo,
     headers: { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "content-type": "application/json", "user-agent": "fluxo-coordenador" },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
+    signal: AbortSignal.timeout(15000),
   });
   if (!r.ok) throw new Error(`GitHub respondeu ${r.status} em ${metodo} ${caminho}`);
   return r.json();
@@ -69,7 +70,7 @@ Regras:
 - Trabalhe somente nesta issue (#${issue.number}). Não crie outras issues.
 - Pode responder dúvidas de uso, pedir esclarecimento ou fazer pequenas mudanças só nos caminhos permitidos pela política.
 - Não altere login, credenciais, banco, atendimento, permissões, workflows nem infraestrutura.
-- Se for mudar código, use a branch ${agente}/issue-${issue.number} e abra um PR que cite #${issue.number}. Não faça merge nem feche a issue.
+- Se for mudar código, edite apenas os arquivos permitidos. Não tente criar branch nem PR: a entrega é feita fora de você. Não faça merge nem feche a issue.
 - Rode npm run build quando puder e diga o que executou e o que não conseguiu conferir.
 - Nunca exponha credenciais.
 
@@ -101,7 +102,7 @@ async function preparar() {
 
   // Uma execução por issue: se já existe pedido, só retoma (manualmente) um que está preparado ou que falhou.
   const ultimo = pedidosDe(comments).at(-1);
-  const retomar = env.RESUME === "true" && ["preparado", "falhou"].includes(ultimo?.phase);
+  const retomar = env.RESUME === "true" && ["preparado", "executando", "falhou"].includes(ultimo?.phase);
   if (ultimo && !retomar) return pular("ja-existe", { issue_number: issue.number, request_id: ultimo.requestId });
 
   const requestId = `req-${issue.number}`;
@@ -131,9 +132,12 @@ async function finalizar() {
 
   const fase = env.FINAL_STATUS === "success" ? "concluido" : "falhou";
   const resultado = existsSync(ultimo.resultPath) ? json(readFileSync(ultimo.resultPath, "utf8")) : null;
-  // Heurística: PR da branch do agente (claude/... ou codex/...) que cita a issue. Se o agente não abriu PR, fica sem.
+  // Heurística: PR da branch do agente (claude/... ou codex/...) que é desta issue: branch issue-N exata ou citação de #N (sem casar #N0).
+  // Se ninguém abriu PR, fica sem.
   const prs = env.ISSUE_FILE ? [] : await github("GET", "/pulls?state=all&per_page=50");
-  const pr = prs.find((p) => p.head?.ref?.startsWith(`${ultimo.agent}/`) && (p.head.ref.includes(`issue-${issue.number}`) || `${p.title} ${p.body ?? ""}`.includes(`#${issue.number}`)));
+  const daIssue = new RegExp(`^${ultimo.agent}/issue-${issue.number}(-|$)`);
+  const citaIssue = new RegExp(`#${issue.number}(?!\\d)`);
+  const pr = prs.find((p) => p.head?.ref?.startsWith(`${ultimo.agent}/`) && (daIssue.test(p.head.ref) || citaIssue.test(`${p.title} ${p.body ?? ""}`)));
 
   const pedido = { ...ultimo, phase: fase, ...(pr ? { prNumber: pr.number } : {}) };
   await comentar(issue, ultimo.requestId, `${marcador(pedido)}

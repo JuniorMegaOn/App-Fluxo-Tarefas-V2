@@ -19,6 +19,7 @@ async function pedir(cfg, metodo, caminho, corpo) {
       "user-agent": "fluxo-atendimento",
     },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
+    signal: AbortSignal.timeout(8000), // o GitHub lento não pode pendurar as rotas do app
   });
   // A mensagem não inclui cabeçalhos nem corpo: nada de credencial vaza para log ou resposta.
   if (!r.ok) throw new Error(`GitHub respondeu ${r.status} em ${metodo} ${caminho}`);
