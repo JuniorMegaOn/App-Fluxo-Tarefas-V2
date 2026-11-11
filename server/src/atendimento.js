@@ -18,14 +18,16 @@ const saidaMensagem = (m) => ({ id: m.id, ticketId: m.ticket_id, author: m.autor
 // --- Ligação com o GitHub e os agentes (Claude Code ou Codex) ---
 // O app cria a issue; o workflow native-agents.yml prepara o pedido e registra o andamento num comentário
 // da própria issue (o Actions não alcança o SQLite local). Aqui só lemos esse comentário, e só do bot do Actions.
-const FASES_FINAIS = ["concluido", "sem-github", "erro-issue"]; // "falhou" não é final: a retomada manual parte dela
-const FASES_DO_AGENTE = ["preparado", "executando", "concluido", "falhou"];
+const FASES_FINAIS = ["respondido", "sem-github", "erro-issue"]; // as demais ainda avançam: retomada manual, PR, entrega
+const FASES_DO_AGENTE = ["preparado", "executando", "concluido", "falhou", "pr-aberto", "aguardando-cliente", "pendente-instrutor", "respondido"];
 const N1 = {
   encaminhado: "Seu atendimento foi registrado e encaminhado para análise técnica. Estamos acompanhando o andamento da solicitação.",
   concluido: "A análise técnica do seu atendimento foi concluída. Se precisar de algo mais, responda por aqui.",
   falhou: "Não conseguimos concluir a análise automática. Uma pessoa da equipe vai dar continuidade.",
+  pendente: "Seu atendimento precisa de uma decisão da equipe. Uma pessoa vai dar continuidade.",
 };
-const CHAVE_N1 = { preparado: "encaminhado", executando: "encaminhado", concluido: "concluido", falhou: "falhou" };
+// Mensagem fixa de cada fase (além da primeira, "encaminhado"). A resposta final do N1 vem do comentário reply da issue.
+const CHAVE_N1 = { preparado: "encaminhado", executando: "encaminhado", "pr-aberto": "encaminhado", "aguardando-cliente": "encaminhado", respondido: "encaminhado", concluido: "concluido", falhou: "falhou", "pendente-instrutor": "pendente" };
 
 const saidaExecucao = (e) => (e ? { phase: e.fase, agent: e.agente, issueNumber: e.issue_numero, prNumber: e.pr_numero } : null);
 
@@ -55,11 +57,20 @@ async function reconciliar(db, ticketId) {
   const ex = db.prepare("SELECT * FROM execucao WHERE ticket_id = ?").get(ticketId);
   if (!cfg || !ex?.issue_numero || FASES_FINAIS.includes(ex.fase)) return;
   try {
-    const pedido = (await listarComentarios(cfg, ex.issue_numero))
-      .filter((c) => c.user?.login === "github-actions[bot]")
+    const doBot = (await listarComentarios(cfg, ex.issue_numero)).filter((c) => c.user?.login === "github-actions[bot]");
+    const pedido = doBot
       .map((c) => { try { return JSON.parse(/<!-- native-agents:request (\{[^\n]*?\}) -->/.exec(c.body ?? "")?.[1] ?? "null"); } catch { return null; } })
       .filter(Boolean)
       .at(-1);
+    // Respostas do N1 publicadas pelo coordenador: o replyId estável evita mensagem repetida ao retomar.
+    const respostas = doBot.flatMap((c) => {
+      const m = /^<!-- native-agents:reply (\{[^\n]*?\}) -->\n?([\s\S]*)$/.exec(c.body ?? "");
+      let r = null;
+      try { r = m && JSON.parse(m[1]); } catch { /* marcador ilegível: ignora */ }
+      const conteudo = (m?.[2] ?? "").trim().slice(0, 2000);
+      const idOk = new RegExp(`^reply-req-${ex.issue_numero}-(integrado|respondido|pergunta)$`).test(r?.replyId ?? "");
+      return r && idOk && r.requestId === `req-${ex.issue_numero}` && conteudo ? [{ id: r.replyId, texto: conteudo }] : [];
+    });
     const valido = pedido && pedido.requestId === `req-${ex.issue_numero}` && /^\.agent-result\/[\w.-]+\.json$/.test(pedido.resultPath)
       && ["claude", "codex"].includes(pedido.agent) && FASES_DO_AGENTE.includes(pedido.phase)
       && (pedido.prNumber === undefined || Number.isInteger(pedido.prNumber));
@@ -70,6 +81,9 @@ async function reconciliar(db, ticketId) {
       for (const chave of new Set(["encaminhado", CHAVE_N1[pedido.phase]])) {
         if (!enviadas[chave]) enviadas[chave] = registrarMensagem(db, ticketId, "agente", N1[chave]).id;
       }
+      for (const r of respostas) {
+        if (!enviadas[r.id]) enviadas[r.id] = registrarMensagem(db, ticketId, "agente", r.texto, r.id).id; // id estável também no banco
+      }
       db.prepare("UPDATE execucao SET agente = ?, request_id = ?, result_path = ?, pr_numero = ?, fase = ?, mensagens_enviadas = ?, atualizado_em = ? WHERE ticket_id = ?")
         .run(pedido.agent, pedido.requestId, pedido.resultPath, pedido.prNumber ?? null, pedido.phase, JSON.stringify(enviadas), new Date().toISOString(), ticketId);
     });
@@ -79,10 +93,10 @@ async function reconciliar(db, ticketId) {
 }
 
 /** Grava uma mensagem e atualiza o ticket. Uma mensagem do usuário reabre um ticket resolvido. */
-export function registrarMensagem(db, ticketId, autor, conteudo) {
+export function registrarMensagem(db, ticketId, autor, conteudo, id = randomUUID()) {
   if (!AUTORES.includes(autor)) throw new Error(`Autor de mensagem desconhecido: ${autor}`);
   const agora = new Date().toISOString();
-  const mensagem = { id: randomUUID(), ticket_id: ticketId, autor, texto: conteudo, criado_em: agora };
+  const mensagem = { id, ticket_id: ticketId, autor, texto: conteudo, criado_em: agora };
   db.prepare("INSERT INTO mensagem_ticket (id, ticket_id, autor, texto, criado_em) VALUES (?, ?, ?, ?, ?)")
     .run(mensagem.id, mensagem.ticket_id, mensagem.autor, mensagem.texto, mensagem.criado_em);
   if (autor === "usuario") {

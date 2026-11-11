@@ -1,0 +1,182 @@
+name: native-delivery
+
+# Entrega do PR aberto pelo coordenador: build verde do commit atual, revisão do diff, merge opcional (AUTO_MERGE),
+# resposta do N1 e fechamento da issue. Também serve para retomar à mão (Run workflow): cada passo decide pelo que
+# já existe no GitHub, então repetir não duplica resposta nem merge. Variáveis: AGENT_DRY_RUN, AGENT_PROVIDER, AUTO_MERGE.
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Número da issue origin:app
+        required: true
+
+concurrency:
+  group: native-delivery-${{ inputs.issue_number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  contexto:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      has_pr: ${{ steps.ctx.outputs.has_pr }}
+      head_sha: ${{ steps.ctx.outputs.head_sha }}
+      merged: ${{ steps.ctx.outputs.merged }}
+      pr_state: ${{ steps.ctx.outputs.pr_state }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Descobrir o PR e o commit atual
+        id: ctx
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: node automacao/coordenador.mjs contexto
+
+  # Roda o código do PR sem segredos e só com leitura: o build verde é do commit exato que será integrado.
+  build:
+    needs: contexto
+    if: needs.contexto.outputs.has_pr == 'true' && needs.contexto.outputs.merged != 'true' && needs.contexto.outputs.pr_state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.contexto.outputs.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+
+  entregar:
+    needs: [contexto, build]
+    if: always() && needs.contexto.outputs.has_pr == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      id-token: write # exigido pela ação do Claude
+    outputs:
+      fix: ${{ steps.ent.outputs.fix }}
+      branch: ${{ steps.ent.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          persist-credentials: false
+
+      # O Revisor lê o diff do PR (como arquivo, nunca como comando) e grava um parecer curto.
+      - name: Preparar a revisão
+        id: rev
+        if: needs.contexto.outputs.merged != 'true' && needs.contexto.outputs.pr_state == 'open' && (vars.AGENT_DRY_RUN || 'true') == 'false'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: node automacao/coordenador.mjs preparar-revisao
+
+      - name: Revisor (Claude Code)
+        if: steps.rev.outputs.review == 'true' && steps.rev.outputs.provider == 'claude'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: Leia o arquivo ${{ steps.rev.outputs.prompt_file }} e execute as instruções dele.
+          claude_args: |
+            --max-turns 8
+            --allowedTools Read,Write,Glob,Grep
+
+      - name: Revisor (OpenAI Codex)
+        if: steps.rev.outputs.review == 'true' && steps.rev.outputs.provider == 'codex'
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":workspace"
+          prompt-file: ${{ steps.rev.outputs.prompt_file }}
+
+      - name: Entregar
+        id: ent
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          BUILD_SHA: ${{ needs.contexto.outputs.head_sha }}
+          AUTO_MERGE: ${{ vars.AUTO_MERGE || 'false' }}
+          AGENT_DRY_RUN: ${{ vars.AGENT_DRY_RUN || 'true' }}
+        run: node automacao/coordenador.mjs entregar
+
+  # Uma única rodada automática de correção, no MESMO PR. Se falhar de novo, o instrutor decide.
+  corrigir:
+    needs: [contexto, entregar]
+    if: needs.entregar.outputs.fix == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.entregar.outputs.branch }}
+          persist-credentials: false
+
+      # O controlador vem da main confiável, não da branch do PR que o agente vai editar.
+      - name: Baixar o coordenador da main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -H "Accept: application/vnd.github.raw" "repos/${GITHUB_REPOSITORY}/contents/automacao/coordenador.mjs?ref=main" > "$RUNNER_TEMP/coordenador.mjs"
+
+      - name: Preparar a correção
+        id: fix
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: node "$RUNNER_TEMP/coordenador.mjs" preparar-correcao
+
+      - name: Claude Code
+        if: steps.fix.outputs.provider == 'claude'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: Leia o arquivo ${{ steps.fix.outputs.prompt_file }} e execute as instruções dele.
+          claude_args: |
+            --max-turns 15
+            --allowedTools Edit,Read,Write,Glob,Grep
+
+      - name: OpenAI Codex
+        if: steps.fix.outputs.provider == 'codex'
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":workspace"
+          prompt-file: ${{ steps.fix.outputs.prompt_file }}
+
+      - name: Publicar na mesma branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          PROVIDER: ${{ steps.fix.outputs.provider }}
+          PR_BRANCH: ${{ needs.entregar.outputs.branch }}
+        run: node "$RUNNER_TEMP/coordenador.mjs" publicar
+
+      - name: Entregar de novo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: gh workflow run native-delivery.yml --ref main -f issue_number="$ISSUE_NUMBER"

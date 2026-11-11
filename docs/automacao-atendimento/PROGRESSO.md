@@ -66,3 +66,17 @@
 - Corrigido: `falhou` deixou de ser fase final no app (a retomada parte dela); retomada aceita também `executando`; PR é casado por branch `agente/issue-N` exata ou `#N` sem casar `#N0`; prompt não pede mais branch/PR que as ferramentas liberadas não permitem; chamadas ao GitHub têm timeout.
 - Não corrigido: comentários da issue lidos só até 100 (sem paginação); ticket em `criando-issue` ou `erro-issue` não é reenviado depois.
 - Antes de `AGENT_DRY_RUN=false`: instalar o app do GitHub do Claude no repositório e confirmar o input `permission-profile` do Codex.
+
+## Etapa 05 — Entregar a resposta e tratar retomadas
+
+**Fluxo.** Com `AGENT_DRY_RUN=false`, depois do agente o coordenador (`automacao/coordenador.mjs publicar`) abre o PR da branch `claude/issue-N` ou `codex/issue-N`, citando a issue com `Refs #N` (sem fechá-la), e dispara `native-delivery.yml`. Esse workflow descobre o commit atual do PR, roda o build desse commit num job sem segredos, pede o parecer do Revisor sobre o diff (mesmo agente escolhido) e confere se só arquivos permitidos pela política mudaram. Com tudo verde: `AUTO_MERGE=false` (padrão) deixa o PR aberto para a demonstração; `AUTO_MERGE=true` integra exatamente o commit conferido, pela API de merge e respeitando as regras da branch, sem bypass. Depois do merge o coordenador publica a resposta curta do N1 na issue (com `replyId` estável) e fecha a issue; o app, ao voltar a consultar, mostra essa resposta no ticket do dono. A mensagem diz que o código foi integrado e que o app local precisa ser atualizado. Dúvida de uso sem código recebe a resposta e fecha a issue; esclarecimento pendente publica a pergunta e mantém o caso aberto. Se build, revisão ou política falharem, o coordenador pede uma correção no MESMO PR (erro curto e `requestId`) e roda uma única rodada automática com o mesmo agente; se falhar de novo, a fase vira `pendente-instrutor` e o instrutor decide. Não nasce outro ticket, issue ou PR.
+
+**Como retomar.** Todos os passos decidem pelo que já existe no GitHub (marcadores nos comentários, PR, estado da issue), então repetir é seguro. Para retomar a entrega de uma issue, rode à mão o workflow `native-delivery` (Actions > Run workflow) com o número da issue: se o PR já foi integrado, só a resposta do N1 e o fechamento da issue são refeitos, sem novo merge nem mensagem repetida; se o PR ainda está aberto, build e revisão rodam de novo no commit atual. Para retomar a etapa do agente (pedido `preparado` ou `falhou`), use `native-agents` com `resume`. Uma fase `pendente-instrutor` só sai dela por decisão humana, repetindo `native-delivery`.
+
+**Ensaio:** `node automacao/ensaio-entrega.mjs` (GitHub simulado, repositório git temporário com remoto local, sem rede e sem chamada paga).
+
+**Pendências**
+- O V2 não permite que o Actions crie PRs (`can_approve_pull_request_reviews: false`). Sem habilitar "Allow GitHub Actions to create and approve pull requests", o coordenador não abre o PR e deixa a fase `pendente-instrutor` com o link da branch. Não alterei essa permissão.
+- A `main` do V2 não tem proteção nem rulesets; "respeitar as regras" hoje é só o merge normal.
+- Os passos reais dos agentes (Claude Code e Codex), o build no Actions e o disparo entre workflows nunca rodaram no GitHub. O YAML foi validado e a lógica foi ensaiada com o GitHub simulado.
+- O texto da etapa pedia o Copilot para a correção; usei o mesmo agente (Claude ou Codex) da etapa 03, como combinado lá.

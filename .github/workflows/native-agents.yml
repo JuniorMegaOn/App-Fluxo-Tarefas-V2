@@ -39,6 +39,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write # exigido pela ação do Claude (autenticação padrão pelo app do GitHub)
+      actions: write # para disparar o workflow de entrega
     steps:
       - uses: actions/checkout@v5
         with:
@@ -85,3 +86,21 @@ jobs:
           RUN_AGENT: ${{ steps.coord.outputs.run_agent }}
           FINAL_STATUS: ${{ job.status }}
         run: node automacao/coordenador.mjs finalizar
+
+      # Com código, o coordenador abre o PR e a entrega segue em native-delivery.yml.
+      # Sem código, ele responde pelo N1 (e fecha a issue se foi uma dúvida respondida).
+      - name: Publicar a alteração ou responder
+        id: publicar
+        if: success() && steps.coord.outputs.run_agent == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.coord.outputs.issue_number }}
+          PROVIDER: ${{ steps.coord.outputs.provider }}
+        run: node automacao/coordenador.mjs publicar
+
+      - name: Disparar a entrega
+        if: steps.publicar.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.coord.outputs.issue_number }}
+        run: gh workflow run native-delivery.yml --ref main -f issue_number="$ISSUE_NUMBER"

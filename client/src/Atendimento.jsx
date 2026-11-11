@@ -11,7 +11,16 @@ import "./atendimento.css";
 
 const hora = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const dia = (iso) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
-const FASE = { preparado: "Encaminhado para análise técnica", executando: "Em análise técnica", concluido: "Análise técnica concluída", falhou: "Aguardando uma pessoa da equipe" };
+const FASE = {
+  preparado: "Encaminhado para análise técnica",
+  executando: "Em análise técnica",
+  "pr-aberto": "Alteração em revisão",
+  "aguardando-cliente": "Aguardando a sua resposta",
+  concluido: "Análise técnica concluída",
+  respondido: "Atendimento respondido",
+  falhou: "Aguardando uma pessoa da equipe",
+  "pendente-instrutor": "Aguardando uma pessoa da equipe",
+};
 
 function Mensagem({ mensagem }) {
   if (mensagem.author === "sistema") {
