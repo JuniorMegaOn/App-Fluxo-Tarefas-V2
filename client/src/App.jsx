@@ -7,6 +7,7 @@ import { Campo } from "./componentes/Campo.jsx";
 import { Confirmar } from "./componentes/Confirmar.jsx";
 import { Dialogo } from "./componentes/Dialogo.jsx";
 import { Icone } from "./componentes/Icone.jsx";
+import { Atendimento } from "./Atendimento.jsx";
 import { moverCartaoEntreListas } from "./ordem.js";
 
 /** Telas em espera: blocos discretos, sem animação, enquanto a API responde. */
@@ -43,6 +44,7 @@ export function App() {
   const [erro, setErro] = useState(null);
   const [dialogo, setDialogo] = useState(null);
   const [tentativa, setTentativa] = useState(0);
+  const [visao, setVisao] = useState("quadros");
 
   // Quadros: a lista vem da API e define qual quadro fica aberto.
   useEffect(() => {
@@ -256,6 +258,8 @@ export function App() {
   return (
     <div className="app">
       <BarraLateral
+        visao={visao}
+        aoMudarVisao={setVisao}
         quadros={quadros}
         quadroId={quadroId}
         aoSelecionar={setQuadroId}
@@ -265,17 +269,23 @@ export function App() {
       />
 
       <main className="canvas">
-        {erro ? (
-          <div className="aviso" role="alert">
-            <span className="aviso-texto">
-              <Icone nome="alerta" tamanho={18} />
-              <span>{erro}</span>
-            </span>
-            <Botao icone="atualizar" onClick={recarregar}>Tentar de novo</Botao>
-          </div>
-        ) : null}
+        {visao === "atendimento" ? (
+          <Atendimento />
+        ) : (
+          <>
+            {erro ? (
+              <div className="aviso" role="alert">
+                <span className="aviso-texto">
+                  <Icone nome="alerta" tamanho={18} />
+                  <span>{erro}</span>
+                </span>
+                <Botao icone="atualizar" onClick={recarregar}>Tentar de novo</Botao>
+              </div>
+            ) : null}
 
-        {conteudo()}
+            {conteudo()}
+          </>
+        )}
       </main>
 
       {dialogo?.tipo === "novo-quadro" ? (

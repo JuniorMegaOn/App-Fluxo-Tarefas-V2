@@ -58,6 +58,22 @@ const MIGRACOES = [
      ('card-api', 'list-fazendo', 'Montar a API de quadros', 'Boards, listas e cartões com movimentação entre listas.', 0),
      ('card-paleta', 'list-pronto', 'Escolher a paleta de cores', '', 0),
      ('card-metricas', 'list-backlog', 'Medir tempo por cartão', '', 0);`,
+  // Atendimento: cada ticket é uma conversa; as mensagens têm autor "usuario", "agente" ou "sistema".
+  `CREATE TABLE ticket (
+     id TEXT PRIMARY KEY,
+     titulo TEXT NOT NULL,
+     status TEXT NOT NULL DEFAULT 'aberto',
+     criado_em TEXT NOT NULL,
+     atualizado_em TEXT NOT NULL
+   );
+   CREATE TABLE mensagem_ticket (
+     id TEXT PRIMARY KEY,
+     ticket_id TEXT NOT NULL REFERENCES ticket(id) ON DELETE CASCADE,
+     autor TEXT NOT NULL,
+     texto TEXT NOT NULL,
+     criado_em TEXT NOT NULL
+   );
+   CREATE INDEX mensagem_ticket_por_ticket ON mensagem_ticket (ticket_id, criado_em)`,
 ];
 
 /** `caminho` = arquivo do banco; `:memory:` nos testes. */

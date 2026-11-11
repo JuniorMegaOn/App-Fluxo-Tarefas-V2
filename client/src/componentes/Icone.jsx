@@ -88,6 +88,13 @@ const DESENHOS = {
       <path d="M20 3v6h-6" />
     </>
   ),
+  conversa: <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />,
+  enviar: (
+    <>
+      <path d="M12 19V5" />
+      <path d="m5 12 7-7 7 7" />
+    </>
+  ),
 };
 
 export function Icone({ nome, tamanho = 18, rotulo, className = "", ...resto }) {
