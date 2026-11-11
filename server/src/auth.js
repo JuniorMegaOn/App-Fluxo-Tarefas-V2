@@ -23,7 +23,7 @@ function tokenDoPedido(req) {
   return c ? c.slice(COOKIE.length + 1) : null;
 }
 
-function usuarioDaSessao(db, req) {
+export function usuarioDaSessao(db, req) {
   const token = tokenDoPedido(req);
   if (!token) return null;
   const l = db.prepare("SELECT u.* FROM sessao s JOIN usuario u ON u.id = s.usuario_id WHERE s.token_hash = ? AND s.expira_em > ?")

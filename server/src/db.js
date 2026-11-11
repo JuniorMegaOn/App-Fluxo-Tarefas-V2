@@ -74,6 +74,21 @@ const MIGRACOES = [
      criado_em TEXT NOT NULL
    );
    CREATE INDEX mensagem_ticket_por_ticket ON mensagem_ticket (ticket_id, criado_em)`,
+  // Execução dos agentes: liga o ticket à issue do GitHub, ao dono e ao andamento. Uma por ticket.
+  `CREATE TABLE execucao (
+     ticket_id TEXT PRIMARY KEY REFERENCES ticket(id) ON DELETE CASCADE,
+     issue_numero INTEGER,
+     usuario_id TEXT REFERENCES usuario(id) ON DELETE SET NULL,
+     agente TEXT,
+     request_id TEXT,
+     result_path TEXT,
+     pr_numero INTEGER,
+     fase TEXT NOT NULL,
+     mensagens_enviadas TEXT NOT NULL DEFAULT '{}',
+     criado_em TEXT NOT NULL,
+     atualizado_em TEXT NOT NULL
+   );
+   CREATE UNIQUE INDEX execucao_por_issue ON execucao (issue_numero) WHERE issue_numero IS NOT NULL`,
 ];
 
 /** `caminho` = arquivo do banco; `:memory:` nos testes. */

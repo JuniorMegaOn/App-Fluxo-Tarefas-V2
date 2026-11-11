@@ -32,3 +32,26 @@
 **Dados locais**
 - Nenhum arquivo `.env` foi lido, criado ou alterado. Nenhum banco SQLite foi apagado.
 - Ticket de teste não foi aberto nesta etapa.
+
+## Etapa 03 — App, issue e coordenador com Claude Code e Codex
+
+**Fluxo**
+1. O cliente abre o ticket no app. O backend cria a issue com a label `origin:app` e grava em `execucao` (SQLite) o ticket, o número da issue, o dono (da sessão, se houver login), o agente, `requestId`, `resultPath`, o PR e a fase.
+2. A issue nova dispara `.github/workflows/native-agents.yml`, que roda `automacao/coordenador.mjs preparar`: confere a label, lê o ticket da issue, escolhe `claude` ou `codex` (`AGENT_PROVIDER`) e monta o pedido em `.agent-result/`. O resumo técnico interno vai num comentário da própria issue, com um marcador.
+3. Com `AGENT_DRY_RUN=false`, o workflow chama a ação oficial do agente escolhido (um só). Com `true` (padrão), nenhum agente é chamado.
+4. O Actions não alcança o SQLite local. Por isso o app lê o comentário do bot do Actions na issue quando o ticket é aberto na tela, atualiza a fase e envia a mensagem do N1 uma única vez.
+5. Retomada manual: `workflow_dispatch` com `issue_number` e `resume`.
+
+**Configuração**
+- Variáveis do repositório (opcionais; sem elas valem os padrões): `AGENT_RUNTIME=claude-codex`, `AGENT_PROVIDER=claude`, `AGENT_DRY_RUN=true`.
+- Secrets, só para `AGENT_DRY_RUN=false`: `ANTHROPIC_API_KEY` (Claude) e `OPENAI_API_KEY` (Codex). `GITHUB_TOKEN` vem do próprio Actions.
+- Backend local, para criar a issue: `GITHUB_REPO=dono/repo` e `GITHUB_ISSUES_TOKEN` (token com permissão de issues). Sem eles o ticket funciona, sem issue.
+
+**Ensaio local:** `node automacao/ensaio-local.mjs` (sem rede e sem chamada paga).
+
+**Limites desta versão**
+- Claude: a ação documentada empurra uma branch e dá o link do PR; não abre o PR sozinha. As docs consultadas não confirmam o uso em `workflow_dispatch`.
+- Codex: edita o workspace e grava o resultado; commit e PR não estão implementados.
+- Nenhuma chamada real a Claude, Codex ou à API do GitHub foi feita. O workflow nunca rodou no GitHub.
+- Os tickets ainda não são filtrados por dono: o dono é só gravado.
+- As ações usam as tags `@v1`, sem fixar por SHA.

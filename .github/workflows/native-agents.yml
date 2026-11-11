@@ -1,0 +1,87 @@
+name: native-agents
+
+# Atende issues abertas pelo aplicativo (label origin:app) com Claude Code ou OpenAI Codex.
+# Escolha do agente e modo de ensaio vêm de variáveis do repositório (Settings > Variables):
+#   AGENT_RUNTIME=claude-codex   AGENT_PROVIDER=claude|codex   AGENT_DRY_RUN=true|false
+# Sem as variáveis valem os padrões abaixo: claude e DRY_RUN ligado (nenhum agente é chamado).
+on:
+  issues:
+    types: [opened, labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Número da issue origin:app
+        required: true
+      resume:
+        description: Retomar um pedido preparado ou que falhou
+        type: boolean
+        default: false
+
+# Uma execução por issue; a segunda espera a primeira e o coordenador a descarta se já houver pedido.
+concurrency:
+  group: native-agents-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  atender:
+    # Só roda a partir da main confiável. O texto da issue nunca é interpolado em comandos: o coordenador a lê pela API.
+    if: >-
+      github.ref == 'refs/heads/main' && (
+        github.event_name == 'workflow_dispatch' ||
+        (contains(github.event.issue.labels.*.name, 'origin:app') &&
+         (github.event.action == 'opened' || github.event.label.name == 'origin:app')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write # exigido pela ação do Claude (autenticação padrão pelo app do GitHub)
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Preparar o pedido
+        id: coord
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+          RESUME: ${{ inputs.resume }}
+          AGENT_RUNTIME: ${{ vars.AGENT_RUNTIME || 'claude-codex' }}
+          AGENT_PROVIDER: ${{ vars.AGENT_PROVIDER || 'claude' }}
+          AGENT_DRY_RUN: ${{ vars.AGENT_DRY_RUN || 'true' }}
+        run: node automacao/coordenador.mjs preparar
+
+      # Só um dos dois roda, e só com AGENT_DRY_RUN=false. O texto do cliente fica no arquivo do pedido, não no prompt.
+      - name: Claude Code
+        if: steps.coord.outputs.run_agent == 'true' && steps.coord.outputs.provider == 'claude'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: Leia o arquivo ${{ steps.coord.outputs.prompt_file }} e execute as instruções dele.
+          claude_args: |
+            --max-turns 15
+            --allowedTools Edit,Read,Write,Glob,Grep
+
+      # O Codex trabalha no workspace e grava o resultado; esta versão não faz commit nem PR por ele.
+      - name: OpenAI Codex
+        if: steps.coord.outputs.run_agent == 'true' && steps.coord.outputs.provider == 'codex'
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":workspace"
+          prompt-file: ${{ steps.coord.outputs.prompt_file }}
+
+      - name: Registrar o resultado na issue
+        if: always() && steps.coord.outputs.run_agent == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.coord.outputs.issue_number }}
+          REQUEST_ID: ${{ steps.coord.outputs.request_id }}
+          RUN_AGENT: ${{ steps.coord.outputs.run_agent }}
+          FINAL_STATUS: ${{ job.status }}
+        run: node automacao/coordenador.mjs finalizar

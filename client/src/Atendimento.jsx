@@ -11,6 +11,7 @@ import "./atendimento.css";
 
 const hora = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const dia = (iso) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+const FASE = { preparado: "Encaminhado para análise técnica", executando: "Em análise técnica", concluido: "Análise técnica concluída", falhou: "Aguardando uma pessoa da equipe" };
 
 function Mensagem({ mensagem }) {
   if (mensagem.author === "sistema") {
@@ -271,6 +272,7 @@ export function Atendimento() {
               </Botao>
             </header>
             <div className="atend-mensagens" role="log" aria-live="polite">
+              {FASE[conversa.execution?.phase] ? <p className="atend-sistema">{FASE[conversa.execution.phase]}</p> : null}
               {conversa.messages.map((m) => <Mensagem key={m.id} mensagem={m} />)}
               <div ref={fimRef} />
             </div>
